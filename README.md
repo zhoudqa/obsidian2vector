@@ -33,9 +33,21 @@ pip install -r requirements.txt
 编辑 `config.py` 或使用环境变量:
 
 ```bash
+# 基础配置
 export VAULT_PATH="~/ai-proj/PaperBell"        # Obsidian Vault 路径
 export EMBEDDING_MODEL="BAAI/bge-small-zh-v1.5" # 嵌入模型
-export DB_TYPE="chroma"                         # 数据库类型: milvus / chroma
+
+# 数据库选择
+export DB_TYPE="milvus"  # 或 "chroma"
+
+# Milvus 配置 (DB_TYPE=milvus 时需要)
+export MILVUS_HOST="localhost"
+export MILVUS_PORT="19530"
+export MILVUS_COLLECTION="obsidian_notes"
+
+# Chroma 配置 (DB_TYPE=chroma 时可选)
+export CHROMA_PATH="./chroma_db"
+export CHROMA_COLLECTION="obsidian_notes"
 ```
 
 ### 3. 索引笔记
@@ -200,15 +212,7 @@ services:
     depends_on:
       - etcd
       - minio
-
-  attu:
-    image: zilliz/attu:v2.5.10
-    environment:
-      MILVUS_ADDRESS: milvus:19530
-    ports:
-      - "3000:3000"
-    depends_on:
-      - milvus
+      
 ```
 
 启动服务:
@@ -246,12 +250,6 @@ print('Milvus 连接成功!')
 "
 ```
 
-### 5. Attu 图形界面 (可选)
-
-Milvus 启动后，可通过 Attu 图形界面管理:
-- 地址: http://localhost:3000
-- 端口: 19530 (自动配置)
-
 ### 6. 常用 Docker 命令
 
 ```bash
@@ -278,26 +276,6 @@ python3 indexer_chroma.py  # 索引
 python3 search_chroma.py   # 搜索
 ```
 
-## Docker 部署 (可选)
-
-## 示例查询
-
-```python
-from pymilvus import connections, Collection
-
-connections.connect(host="localhost", port="19530")
-collection = Collection("obsidian_notes")
-collection.load()
-
-# 搜索
-results = collection.search(
-    data=[[0.1, 0.2, ...]],  # 查询向量
-    anns_field="vector",
-    param={"metric_type": "L2", "params": {"nprobe": 10}},
-    limit=5,
-    output_fields=["title", "content", "tags"]
-)
-```
 
 ## 许可证
 
