@@ -143,19 +143,142 @@ obsidian2milvus-mvp/
 └── requirements.txt   # 依赖
 ```
 
-## Docker 部署 (可选)
+## Milvus 环境配置
+
+### 1. 安装 Docker Desktop
+
+**macOS (使用 Homebrew):**
+```bash
+brew install --cask docker
+```
+
+启动 Docker Desktop 并确保其运行正常。
+
+### 2. 使用 Docker Compose 启动 Milvus
+
+创建 `docker-compose.yml`:
 
 ```yaml
-# docker-compose.yml
 version: '3'
 services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ./etcd:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - ./minio:/minio_data
+    command: minio server /minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/liveness"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
   milvus:
     image: milvusdb/milvus:v2.4.0
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ./milvus:/var/lib/milvus
     ports:
       - "19530:19530"
-    volumes:
-      - milvus_data:/var/lib/milvus
+      - "9091:9091"
+    depends_on:
+      - etcd
+      - minio
+
+  attu:
+    image: zilliz/attu:v2.5.10
+    environment:
+      MILVUS_ADDRESS: milvus:19530
+    ports:
+      - "3000:3000"
+    depends_on:
+      - milvus
 ```
+
+启动服务:
+```bash
+docker compose up -d
+```
+
+验证服务状态:
+```bash
+docker compose ps
+```
+
+### 3. Milvus 配置参数
+
+编辑 `config.py` 或使用环境变量:
+
+```bash
+export DB_TYPE="milvus"
+export MILVUS_HOST="localhost"      # Milvus 服务器地址
+export MILVUS_PORT="19530"          # Milvus 端口
+export MILVUS_COLLECTION="obsidian_notes"  # Collection 名称
+```
+
+### 4. 验证 Milvus 连接
+
+```bash
+# 检查 Milvus 端口
+curl http://localhost:19530/health
+
+# 或通过 Python 测试
+python3 -c "
+from pymilvus import connections
+connections.connect(host='localhost', port='19530')
+print('Milvus 连接成功!')
+"
+```
+
+### 5. Attu 图形界面 (可选)
+
+Milvus 启动后，可通过 Attu 图形界面管理:
+- 地址: http://localhost:3000
+- 端口: 19530 (自动配置)
+
+### 6. 常用 Docker 命令
+
+```bash
+# 查看日志
+docker compose logs -f milvus
+
+# 停止服务
+docker compose down
+
+# 删除数据(重置)
+docker compose down -v
+```
+
+## Chroma 快速开始
+
+Chroma 无需额外服务，直接使用:
+
+```bash
+export DB_TYPE="chroma"
+export CHROMA_PATH="./chroma_db"  # 本地存储路径
+export CHROMA_COLLECTION="obsidian_notes"
+
+python3 indexer_chroma.py  # 索引
+python3 search_chroma.py   # 搜索
+```
+
+## Docker 部署 (可选)
 
 ## 示例查询
 
