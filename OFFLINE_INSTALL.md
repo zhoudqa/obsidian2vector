@@ -2,6 +2,14 @@
 
 本文档说明如何在 Windows 无网络环境下安装本项目依赖。
 
+## 场景说明
+
+本指南适用于以下场景:
+- ✅ 可以通过 pip 下载 Python 包 (可访问 PyPI/镜像)
+- ❌ 无法访问 HuggingFace 等模型网站下载模型
+
+---
+
 ## 准备工作
 
 ### 1. 确定目标机器环境
@@ -93,27 +101,75 @@ vc_redist.x64.exe /install /quiet /norestart
 |------|------|---------|
 | `BAAI/bge-small-zh-v1.5` | ~80MB | https://huggingface.co/BAAI/bge-small-zh-v1.5 |
 
-### 下载步骤
+### 下载步骤 (在可访问模型的机器上)
 
-1. 访问: https://huggingface.co/BAAI/bge-small-zh-v1.5/tree/main
-2. 下载以下文件:
-   - `config.json`
-   - `model.safetensors` (或 `pytorch_model.bin`)
-   - `tokenizer.json`
-   - `tokenizer_config.json`
-   - `vocab.txt`
-   - `1_Pooling/config.json`
-   - `README.md`
+1. 在能访问 HuggingFace 的机器上安装 sentence-transformers:
+```bash
+pip install sentence-transformers
+```
 
-3. 复制到目标机器:
+2. 首次运行会自动下载模型到缓存目录:
+```python
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer('BAAI/bge-small-zh-v1.5')
+```
+
+3. 找到模型缓存路径:
+```powershell
+# macOS/Linux
+ls ~/.cache/huggingface/hub/
+
+# Windows
+dir %USERPROFILE%\.cache\huggingface\hub\
+```
+
+4. 复制整个模型目录到目标机器的相同位置:
    ```
-   C:\Users\<用户名>\.cache\huggingface\hub\models--BAAI--bge-small-zh-v1.5\
+   源: C:\Users\<用户名>\.cache\huggingface\hub\models--BAAI--bge-small-zh-v1.5\
+   目标: C:\Users\<用户名>\.cache\huggingface\hub\models--BAAI--bge-small-zh-v1.5\
    ```
+
+### 手动下载 (通过镜像/代理)
+
+如果无法直接访问 HuggingFace，可以尝试:
+
+1. **HuggingFace 镜像站**:
+   - https://hf-mirror.com (国内镜像)
+   - 访问 https://hf-mirror.com/BAAI/bge-small-zh-v1.5 下载
+
+2. **ModelScope (阿里)**:
+   - https://modelscope.cn/models/AI-ModelScope/bge-small-zh-v1.5
+   - 注册后可直接下载
+
+3. **百度飞桨**:
+   - 搜索 "bge-small-zh-v1.5"
 
 ### 验证模型
 
 ```powershell
 python -c "from sentence_transformers import SentenceTransformer; m = SentenceTransformer('BAAI/bge-small-zh-v1.5'); print(m.get_sentence_embedding_dimension())"
+```
+
+### 使用国产镜像源加载模型
+
+如果在目标机器上无法访问 HuggingFace，但需要加载模型，可以:
+
+1. **设置镜像环境变量**:
+```powershell
+set HF_ENDPOINT=https://hf-mirror.com
+python search.py
+```
+
+2. **在 config.py 中修改**:
+```python
+import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+```
+
+3. **使用 ModelScope** (如果无法使用 HuggingFace 镜像):
+```python
+from modelscope import MsDataset
+# 下载模型后复制到 HuggingFace 格式目录
 ```
 
 ---
