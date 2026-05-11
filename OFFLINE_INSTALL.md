@@ -1,19 +1,27 @@
-# 离线安装指南
+# Windows 离线安装指南
 
-本文档说明如何在无网络环境下安装依赖和模型。
+本文档说明如何在 Windows 无网络环境下安装本项目依赖。
 
-## 需要下载的资源
+## 准备工作
 
-### 1. Python 依赖包
+### 1. 确定目标机器环境
 
-从以下地址下载 whl 文件:
+- **操作系统**: Windows 10/11 (x64)
+- **Python 版本**: 3.9 / 3.10 / 3.11 / 3.12
+- **架构**: x86_64 (AMD64)
 
-- **PyPI**: https://pypi.org/simple/
-- **第三方镜像**:
-  - 阿里云: https://mirrors.aliyun.com/pypi/simple/
-  - 清华: https://pypi.tuna.tsinghua.edu.cn/simple/
+### 2. 准备一台有网络的构建机
 
-**必需包列表** (见 `requirements.txt`):
+在有网络的机器上下载所有依赖，再复制到目标机器。
+
+---
+
+## 第一部分: Python 环境依赖
+
+### 需要下载的包列表
+
+创建 `requirements.txt`:
+
 ```
 sentence-transformers>=2.7.0
 transformers>=4.51.0
@@ -23,164 +31,237 @@ chromadb>=0.4.0
 fastapi
 uvicorn
 pydantic
+jieba
 ```
 
-### 2. 嵌入模型
+### 在构建机上下载所有依赖
 
-#### 推荐: BGE Small (轻量, 中文优化)
+```powershell
+# 创建虚拟环境
+python -m venv offline_env
+offline_env\Scripts\activate
+
+# 下载所有依赖包 (包括子依赖)
+pip download -r requirements.txt -d .\packages
+
+# 同时下载 chromadb 的可选依赖
+pip download chromadb -d .\packages
+```
+
+**重要**: 下载时需要指定目标平台的 wheel:
+
+```powershell
+pip download chromadb --platform win_amd64 --python-version 3.11 --implementation cp -d .\packages
+```
+
+---
+
+## 第二部分: 系统依赖 (Windows 必须)
+
+### 1. Microsoft Visual C++ Build Tools
+
+**必须安装**，Chroma 的 `chroma-hnswlib` 需要编译:
+
+1. 下载: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+2. 选择 "使用 C++ 的桌面开发" 工作负载
+3. 安装后需要重启系统
+
+**离线安装方法**:
+- 下载 ISO 镜像 (需要 Visual Studio 订阅)
+- 或使用 Windows Update 推送
+
+### 2. Microsoft Visual C++ Redistributable
+
+**必须安装**，Chroma 的 Rust 绑定需要运行时:
+
+下载链接:
+- VC++ 2015-2022 (x64): https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+**离线安装**:
+```powershell
+# 下载后复制到目标机器直接安装
+vc_redist.x64.exe /install /quiet /norestart
+```
+
+---
+
+## 第三部分: 嵌入模型
+
+### 推荐: BGE Small (轻量, 中文优化)
 
 | 模型 | 大小 | 下载链接 |
 |------|------|---------|
 | `BAAI/bge-small-zh-v1.5` | ~80MB | https://huggingface.co/BAAI/bge-small-zh-v1.5 |
 
-**下载方式:**
-```bash
-# 方法 1: 使用 huggingface-cli (需要网络一次)
-huggingface-cli download BAAI/bge-small-zh-v1.5
+### 下载步骤
 
-# 方法 2: 直接下载 (推荐)
-# 访问 https://huggingface.co/BAAI/bge-small-zh-v1.5/tree/main
-# 下载以下文件到 ~/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5/
-```
+1. 访问: https://huggingface.co/BAAI/bge-small-zh-v1.5/tree/main
+2. 下载以下文件:
+   - `config.json`
+   - `model.safetensors` (或 `pytorch_model.bin`)
+   - `tokenizer.json`
+   - `tokenizer_config.json`
+   - `vocab.txt`
+   - `1_Pooling/config.json`
+   - `README.md`
 
-**需要下载的文件:**
-```
-config.json
-config_sentence_transformers.json
-model.safetensors
-model_config.json
-README.md
-sentence_bert_config.json
-tokenizer.json
-tokenizer_config.json
-vocab.txt
-1_Pooling/config.json
-```
-
-#### 可选: BGE Base (中等精度)
-
-| 模型 | 大小 | 下载链接 |
-|------|------|---------|
-| `BAAI/bge-base-zh-v1.5` | ~170MB | https://huggingface.co/BAAI/bge-base-zh-v1.5 |
-
-#### 可选: Qwen3 Embedding
-
-| 模型 | 大小 | 下载链接 |
-|------|------|---------|
-| `Qwen/Qwen3-Embedding-0.6B` | ~1.2GB | https://huggingface.co/Qwen/Qwen3-Embedding-0.6B |
-
-## 离线安装步骤
-
-### 步骤 1: 准备 Python 包
-
-在有网络的机器上下载包:
-```bash
-pip download -r requirements.txt -d ./packages
-```
-
-将 `./packages` 目录复制到目标机器:
-```bash
-pip install --no-index --find-links=./packages -r requirements.txt
-```
-
-### 步骤 2: 准备模型文件
-
-**方式 A: 使用模型缓存目录**
-
-1. 在有网络的机器上首次运行脚本 (会自动下载模型):
-```bash
-python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-zh-v1.5')"
-```
-
-2. 找到模型缓存目录:
-```bash
-# macOS
-ls -la ~/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5/
-
-# Linux
-ls -la ~/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5/
-```
-
-3. 复制整个目录到目标机器的相同位置
-
-**方式 B: 直接下载模型文件**
-
-访问以下链接手动下载:
-
-1. BGE Small (推荐):
-   - https://huggingface.co/BAAI/bge-small-zh-v1.5/tree/main
-
-2. 解压后放置到:
+3. 复制到目标机器:
    ```
-   ~/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5/
+   C:\Users\<用户名>\.cache\huggingface\hub\models--BAAI--bge-small-zh-v1.5\
    ```
 
-### 步骤 3: 验证安装
+### 验证模型
 
-```bash
-# 验证 Python 包
-python3 -c "import sentence_transformers; print('OK')"
-
-# 验证模型加载 (离线模式)
-python3 -c "
-from sentence_transformers import SentenceTransformer
-model = SentenceTransformer('BAAI/bge-small-zh-v1.5')
-print('Model loaded:', model.get_sentence_embedding_dimension())
-"
+```powershell
+python -c "from sentence_transformers import SentenceTransformer; m = SentenceTransformer('BAAI/bge-small-zh-v1.5'); print(m.get_sentence_embedding_dimension())"
 ```
 
-### 步骤 4: 验证向量搜索
+---
 
-```bash
-# 测试中文语义搜索
-python3 -c "
-from sentence_transformers import SentenceTransformer
-model = SentenceTransformer('BAAI/bge-small-zh-v1.5')
-vec = model.encode('你好世界')
-print('Vector shape:', vec.shape)
-print('中文嵌入测试通过!')
-"
+## 第四部分: Chroma 特殊依赖 (如使用 Chroma)
+
+### Chroma Windows 依赖清单
+
+| 依赖 | 用途 | 安装方式 |
+|------|------|---------|
+| VC++ Build Tools | 编译 chroma-hnswlib | 需安装 |
+| VC++ Redistributable | 运行 Rust 绑定 DLL | 需安装 |
+| pybind11 | 编译 hnswlib | pip 安装 |
+| hnswlib | 向量索引 | pip 安装 |
+
+### Chroma 安装常见问题
+
+**问题 1: 编译失败**
+```
+error: Microsoft Visual C++ 14.0 or greater is required
+```
+**解决**: 安装 Visual C++ Build Tools
+
+**问题 2: DLL 加载失败**
+```
+ImportError: DLL load failed while importing chromadb_rust_bindings
+```
+**解决**: 安装 Visual C++ Redistributable
+
+**问题 3: 依赖缺失**
+```
+ModuleNotFoundError: No module named 'pybind11'
+```
+**解决**:
+```powershell
+pip install pybind11 --no-build-isolation
+pip install hnswlib --no-build-isolation
+pip install chromadb
 ```
 
-## 模型文件结构示例
+### Chroma 离线安装脚本
+
+在目标机器上创建 `install_chroma.ps1`:
+
+```powershell
+# 安装 Visual C++ Redistributable (需要提前下载 vc_redist.x64.exe)
+.\vc_redist.x64.exe /install /quiet /norestart
+
+# 安装 pybind11 和 hnswlib (需要 Build Tools)
+pip install pybind11 --no-build-isolation
+pip install hnswlib --no-build-isolation
+
+# 安装 chromadb (使用本地包)
+pip install --no-index --find-links=.\packages chromadb
+```
+
+---
+
+## 第五部分: 部署到目标机器
+
+### 1. 复制文件
+
+将以下内容复制到目标机器:
 
 ```
-~/.cache/huggingface/hub/
-└── models--BAAI--bge-small-zh-v1.5/
-    ├── blobs/
-    │   ├── model.safetensors (主模型文件, ~80MB)
-    │   └── ...
-    ├── refs/
-    │   └── main
-    ├── snapshots/
-    │   └── xxxxxxxxxxxx/
-    │       ├── config.json
-    │       ├── model.safetensors -> ../../blobs/model.safetensors
-    │       ├── tokenizer.json
-    │       └── ...
-    └── .gitattributes
+├── packages/           # Python 包目录
+├── vc_redist.x64.exe  # VC++ 运行库
+└── models/            # 嵌入模型 (可选)
 ```
+
+### 2. 安装顺序
+
+```powershell
+# 1. 安装系统依赖
+.\vc_redist.x64.exe /install /quiet /norestart
+
+# 2. 安装 Python 依赖
+pip install --no-index --find-links=.\packages -r requirements.txt
+
+# 3. 安装嵌入模型 (可选，如果模型已预下载)
+# 复制到 C:\Users\<用户名>\.cache\huggingface\hub\
+
+# 4. 验证安装
+python -c "import chromadb; print('Chroma OK')"
+python -c "from sentence_transformers import SentenceTransformer; print('Model OK')"
+```
+
+---
+
+## 第六部分: 验证测试
+
+### 1. 基本验证
+
+```powershell
+# 测试 Chroma
+python -c "import chromadb; client = chromadb.Client(); print('Chroma OK')"
+
+# 测试 sentence-transformers
+python -c "from sentence_transformers import SentenceTransformer; m = SentenceTransformer('BAAI/bge-small-zh-v1.5'); print(m)"
+
+# 测试 Milvus (如使用)
+python -c "from pymilvus import connections; connections.connect(host='localhost', port='19530'); print('Milvus OK')"
+```
+
+### 2. 运行索引脚本
+
+```powershell
+# 索引到 Chroma
+python indexer_chroma.py
+
+# 运行搜索服务
+python search_chroma.py
+```
+
+---
 
 ## 常见问题
 
-### Q: 模型下载太慢怎么办?
+### Q: pip 安装失败，提示缺少某包
 
-A: 使用国内镜像或使用 Download Files 功能逐个下载:
-```bash
-# 使用镜像站
-HF_ENDPOINT=https://hf-mirror.com huggingface-cli download BAAI/bge-small-zh-v1.5
+A: 使用 `pip download` 在构建机上下载完整依赖链:
+```powershell
+pip download chromadb -d .\packages --no-binary :all: --platform win_amd64
 ```
 
-### Q: 离线后模型仍然无法加载?
+### Q: 模型加载失败
 
-A: 检查以下几点:
-1. 模型路径是否正确
-2. 文件权限是否足够
-3. 确认模型版本匹配 (检查 config.json 中的 model_type)
-
-### Q: 如何查看模型缓存位置?
-
-A:
-```bash
-python3 -c "from sentence_transformers import SentenceTransformer; print(SentenceTransformer('BAAI/bge-small-zh-v1.5').tokenizer.name_or_path)"
+A: 检查模型路径:
+```powershell
+# 查看模型缓存位置
+python -c "from sentence_transformers import SentenceTransformer; print(SentenceTransformer('BAAI/bge-small-zh-v1.5').tokenizer.name_or_path)"
 ```
+
+### Q: Chroma 启动失败
+
+A: 检查 VC++ 依赖:
+```powershell
+# 检查 VC++ Redistributable
+Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" -ErrorAction SilentlyContinue
+```
+
+---
+
+## 快速检查清单
+
+- [ ] Python 3.9+ 已安装
+- [ ] Visual C++ Build Tools 已安装 (如需编译)
+- [ ] Visual C++ Redistributable 已安装
+- [ ] 所有 Python 包已下载并安装
+- [ ] 嵌入模型已放置到正确位置
+- [ ] 依赖验证通过
