@@ -9,12 +9,15 @@
 - 🗄️ **多数据库支持** - Milvus / Chroma 向量数据库
 - 🌐 **REST API** - FastAPI 搜索接口
 - 🤖 **MCP Server** - Model Context Protocol 服务器，支持 AI 助手直接调用
+- 🇨🇳 **中文优化** - 完美支持中文笔记语义搜索、标签过滤、Wiki链接检索
 
 ## 支持的嵌入模型
 
+所有模型均针对中文语义理解优化:
+
 | 模型 | 向量维度 | 说明 |
 |------|---------|------|
-| `BAAI/bge-small-zh-v1.5` | 512 | 默认，轻量快速 |
+| `BAAI/bge-small-zh-v1.5` | 512 | ⭐ 默认，轻量快速 |
 | `BAAI/bge-base-zh-v1.5` | 768 | 中等精度 |
 | `BAAI/bge-large-zh-v1.5` | 1024 | 高精度 |
 | `Qwen/Qwen3-Embedding-0.6B` | 1024 | 阿里 Qwen 系列 |
