@@ -4,6 +4,8 @@ import glob
 from pathlib import Path
 from typing import List, Dict, Any
 
+from obsidian_parser.parser.elements import parse_tags, parse_wikilinks
+
 def parse_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
     if content.startswith("---"):
         parts = content.split("---", 2)
@@ -50,8 +52,20 @@ def extract_tags_and_links(content: str, frontmatter: Dict) -> tuple[List[str], 
         elif isinstance(tags_str, list):
             tags = tags_str
 
-    tags += re.findall(r'#([^\s#]+)', content)
-    links = re.findall(r'\[\[(.*?)\]\]', content)
+    try:
+        # Pre-process: insert space before Chinese punctuation so
+        # obsidian_parser's ASCII-only lookahead can match tags like #工作/项目。
+        preprocessed = re.sub(
+            r'([#\w/\-])([。！？，；：（）【】\u201d\u300b])',
+            r'\1 \2',
+            content,
+        )
+        obsidian_tags = parse_tags(preprocessed)
+        tags += [t.name for t in obsidian_tags]
+        obsidian_links = parse_wikilinks(content)
+        links = [lnk.target for lnk in obsidian_links]
+    except Exception:
+        links = re.findall(r'\[\[(.*?)\]\]', content)
 
     return list(set(tags)), links
 

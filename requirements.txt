@@ -6,3 +6,4 @@ chromadb>=0.4.0
 fastapi
 uvicorn
 pydantic
+obsidianmd-parser>=0.4.0
