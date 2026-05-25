@@ -3,16 +3,16 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "obsidian2vector"
+name = "obsidian2vector-mcp"
 version = "0.0.2"
-description = "Convert Obsidian vault to vector database (Milvus/Chroma)"
+description = "MCP Server for searching Obsidian notes via vector similarity"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
     { name = "zdq" },
 ]
-keywords = ["obsidian", "milvus", "chroma", "vector", "embedding", "mcp", "search"]
+keywords = ["obsidian", "mcp", "vector", "search", "embedding"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -20,18 +20,10 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Text Processing :: Indexing",
 ]
 dependencies = [
-    "sentence-transformers>=2.7.0",
-    "transformers>=4.51.0",
-    "torch",
-    "pymilvus>=2.4.0",
-    "chromadb>=0.4.0",
-    "fastapi",
-    "uvicorn",
-    "pydantic",
-    "obsidianmd-parser>=0.4.0",
+    "obsidian2vector>=0.0.1",
+    "mcp>=1.0.0",
 ]
 
 [project.urls]
@@ -39,9 +31,7 @@ Homepage = "https://github.com/zhoudqa/obsidian2vector"
 Repository = "https://github.com/zhoudqa/obsidian2vector"
 
 [project.scripts]
-obsidian2vector-index = "obsidian2vector.indexer:main"
-obsidian2vector-search = "obsidian2vector.search:main"
-obsidian2vector-search-chroma = "obsidian2vector.search_chroma:main"
+obsidian2vector-mcp = "obsidian2vector_mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

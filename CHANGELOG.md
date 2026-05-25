@@ -1,0 +1,26 @@
+# Changelog
+
+## [0.0.2] - 2025-05-25
+
+### Changed
+
+- **配置方式重构**: 从环境变量改为 `~/.obsidian2vector/settings.json` 文件配置，跨平台支持 (macOS/Linux/Windows)，环境变量仍可用作覆盖
+- **MCP Server 独立发布**: 拆分为 `obsidian2vector-mcp` 独立 PyPI 包，依赖 `obsidian2vector` 核心包
+- **合并索引器**: `indexer.py` 和 `indexer_chroma.py` 合并为统一的 `obsidian2vector-index` 命令，根据 `db_type` 配置自动选择数据库
+- 更新 README 为非源码安装使用方式
+
+### Removed
+
+- 移除 `mcp_server.py`、`mcp_test.py`（迁移至独立包）
+- 移除 `indexer_chroma.py`（合并入 `indexer.py`）
+
+## [0.0.1] - 2025-05-20
+
+### Added
+
+- Obsidian Vault Markdown 解析（frontmatter、tags、wiki links）
+- 向量嵌入支持 BGE / Qwen3-Embedding 模型
+- Milvus / Chroma 向量数据库支持
+- FastAPI REST 搜索接口
+- MCP Server 支持
+- PyPI 打包结构

@@ -25,63 +25,81 @@
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 安装
 
 ```bash
-pip install -r requirements.txt
+# 核心包（索引 + 搜索 API）
+pip install obsidian2vector
+
+# MCP Server（可选，依赖核心包自动安装）
+pip install obsidian2vector-mcp
 ```
 
 ### 2. 配置
 
-编辑 `config.py` 或使用环境变量:
+首次运行时自动在用户目录下生成配置文件：
 
-```bash
-# 基础配置
-export VAULT_PATH="~/ai-proj/PaperBell"        # Obsidian Vault 路径
-export EMBEDDING_MODEL="BAAI/bge-small-zh-v1.5" # 嵌入模型
+| 平台 | 路径 |
+|------|------|
+| macOS / Linux | `~/.obsidian2vector/settings.json` |
+| Windows | `C:\Users\<用户名>\.obsidian2vector\settings.json` |
 
-# 数据库选择
-export DB_TYPE="milvus"  # 或 "chroma"
+编辑该文件：
 
-# Milvus 配置 (DB_TYPE=milvus 时需要)
-export MILVUS_HOST="localhost"
-export MILVUS_PORT="19530"
-export MILVUS_COLLECTION="obsidian_notes"
-
-# Chroma 配置 (DB_TYPE=chroma 时可选)
-export CHROMA_PATH="./chroma_db"
-export CHROMA_COLLECTION="obsidian_notes"
+```json
+{
+  "vault_path": "/path/to/your/obsidian/vault",
+  "embedding_model": "BAAI/bge-small-zh-v1.5",
+  "db_type": "chroma",
+  "chroma_path": "~/.obsidian2vector/chroma_db",
+  "chroma_collection": "obsidian_notes"
+}
 ```
+
+<details>
+<summary>完整配置项</summary>
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `vault_path` | `""` | Obsidian Vault 路径（必填） |
+| `embedding_model` | `BAAI/bge-small-zh-v1.5` | 嵌入模型名称 |
+| `db_type` | `milvus` | 数据库类型：`milvus` 或 `chroma` |
+| `milvus_host` | `localhost` | Milvus 地址 |
+| `milvus_port` | `19530` | Milvus 端口 |
+| `milvus_collection` | `obsidian_notes` | Milvus Collection 名称 |
+| `chroma_path` | `""` | Chroma 本地存储路径（默认 `~/.chroma`） |
+| `chroma_collection` | `obsidian_notes` | Chroma Collection 名称 |
+| `model_load_mode` | `online` | 模型加载：`online` 或 `offline` |
+| `model_local_path` | `""` | 离线模式本地模型路径 |
+| `hf_endpoint` | `""` | HuggingFace 镜像地址 |
+| `api_host` | `0.0.0.0` | REST API 监听地址 |
+| `api_port` | `8000` | REST API 端口 |
+
+</details>
+
+> 环境变量仍可使用，优先级高于 settings.json：`VAULT_PATH`、`DB_TYPE`、`MILVUS_HOST` 等。
 
 ### 3. 索引笔记
 
-**Milvus 版本:**
 ```bash
-python3 indexer.py
+obsidian2vector-index
 ```
 
-**Chroma 版本:**
-```bash
-python3 indexer_chroma.py
-```
+根据 `db_type` 配置自动选择 Milvus 或 Chroma。
 
-### 4. 启动搜索 API
+### 4. 搜索
 
-**Milvus:**
-```bash
-python3 search.py
-```
+**REST API：**
 
-**Chroma:**
 ```bash
-python3 search_chroma.py
+# Milvus
+obsidian2vector-search
+
+# Chroma
+obsidian2vector-search-chroma
 ```
 
 API 地址: http://localhost:8000
-
-## API 接口
-
-### 搜索笔记
 
 ```bash
 curl -X POST http://localhost:8000/search \
@@ -89,32 +107,23 @@ curl -X POST http://localhost:8000/search \
   -d '{"query": "论文", "top_k": 5}'
 ```
 
-**参数:**
-- `query`: 搜索文本
-- `top_k`: 返回结果数量
-- `tags`: 按标签过滤 (可选)
-- `links`: 按 wiki 链接过滤 (可选)
+**参数:** `query`（搜索文本）、`top_k`（结果数）、`tags`（标签过滤，可选）、`links`（链接过滤，可选）
 
-### 获取所有标签
+### 获取所有标签 / 链接
 
 ```bash
 curl http://localhost:8000/tags
-```
-
-### 获取所有链接
-
-```bash
 curl http://localhost:8000/links
 ```
 
 ## MCP Server
 
-支持作为 MCP Server 运行，供 Claude Desktop 等 AI 助手直接调用。
+供 Claude Desktop 等 AI 助手直接调用。
 
-### 启动 MCP Server
+### 启动
 
 ```bash
-python3 mcp_server.py
+obsidian2vector-mcp
 ```
 
 ### Claude Desktop 配置
@@ -125,9 +134,7 @@ python3 mcp_server.py
 {
   "mcpServers": {
     "obsidian-search": {
-      "command": "python3",
-      "args": ["mcp_server.py"],
-      "env": {"PYTHONPATH": "项目路径"}
+      "command": "obsidian2vector-mcp"
     }
   }
 }
@@ -141,22 +148,6 @@ python3 mcp_server.py
 | `list_all_tags` | 列出所有标签 |
 | `list_all_links` | 列出所有 wiki 链接 |
 | `get_note_by_path` | 按路径获取笔记 |
-
-## 项目结构
-
-```
-obsidian2milvus-mvp/
-├── config.py           # 配置 (模型、数据库)
-├── parser.py           # Obsidian 解析器
-├── embedder.py         # 嵌入模型加载
-├── indexer.py         # Milvus 索引
-├── indexer_chroma.py  # Chroma 索引
-├── search.py          # Milvus 搜索 API
-├── search_chroma.py   # Chroma 搜索 API
-├── mcp_server.py      # MCP Server
-├── mcp_test.py        # MCP 测试客户端
-└── requirements.txt   # 依赖
-```
 
 ## Milvus 环境配置
 
@@ -215,7 +206,6 @@ services:
     depends_on:
       - etcd
       - minio
-      
 ```
 
 启动服务:
@@ -223,62 +213,25 @@ services:
 docker compose up -d
 ```
 
-验证服务状态:
-```bash
-docker compose ps
-```
+### 3. 配置
 
-### 3. Milvus 配置参数
+编辑 `~/.obsidian2vector/settings.json`，设置 `db_type` 为 `milvus` 并填写连接信息。
 
-编辑 `config.py` 或使用环境变量:
+### 4. 常用 Docker 命令
 
 ```bash
-export DB_TYPE="milvus"
-export MILVUS_HOST="localhost"      # Milvus 服务器地址
-export MILVUS_PORT="19530"          # Milvus 端口
-export MILVUS_COLLECTION="obsidian_notes"  # Collection 名称
-```
-
-### 4. 验证 Milvus 连接
-
-```bash
-# 检查 Milvus 端口
-curl http://localhost:19530/health
-
-# 或通过 Python 测试
-python3 -c "
-from pymilvus import connections
-connections.connect(host='localhost', port='19530')
-print('Milvus 连接成功!')
-"
-```
-
-### 6. 常用 Docker 命令
-
-```bash
-# 查看日志
-docker compose logs -f milvus
-
-# 停止服务
-docker compose down
-
-# 删除数据(重置)
-docker compose down -v
+docker compose logs -f milvus    # 查看日志
+docker compose down               # 停止服务
+docker compose down -v            # 删除数据(重置)
 ```
 
 ## Chroma 快速开始
 
-Chroma 无需额外服务，直接使用:
+Chroma 无需额外服务。在 `settings.json` 中设置 `db_type` 为 `chroma`，然后直接索引即可：
 
 ```bash
-export DB_TYPE="chroma"
-export CHROMA_PATH="./chroma_db"  # 本地存储路径
-export CHROMA_COLLECTION="obsidian_notes"
-
-python3 indexer_chroma.py  # 索引
-python3 search_chroma.py   # 搜索
+obsidian2vector-index
 ```
-
 
 ## 许可证
 

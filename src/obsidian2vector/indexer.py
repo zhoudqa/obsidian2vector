@@ -1,23 +1,10 @@
 import os
 import sys
-import json
-from pathlib import Path
 
 from obsidian2vector import config
 from obsidian2vector.parser import parse_vault
 from obsidian2vector.embedder import Embedder
 
-def get_milvus_client():
-    from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
-    connections.connect(host=config.MILVUS_HOST, port=config.MILVUS_PORT)
-    return "milvus"
-
-def get_chroma_client():
-    import chromadb
-    from chromadb.config import Settings
-    os.makedirs(config.CHROMA_PATH, exist_ok=True)
-    client = chromadb.PersistentClient(path=config.CHROMA_PATH)
-    return "chroma", client
 
 def index_to_milvus(notes, embedder):
     from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
