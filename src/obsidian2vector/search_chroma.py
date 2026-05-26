@@ -6,7 +6,7 @@ import chromadb
 
 embedder = Embedder()
 
-print(f"\n🗄️ 连接 Chroma: {config.CHROMA_PATH}")
+print(f"\nConnecting to Chroma: {config.CHROMA_PATH}")
 client = chromadb.PersistentClient(path=config.CHROMA_PATH)
 collection = client.get_collection(name=config.CHROMA_COLLECTION)
 
@@ -34,7 +34,7 @@ class SearchResult(BaseModel):
 
 @app.post("/search", response_model=List[SearchResult])
 def search_api(req: SearchRequest):
-    query_to_use = req.query if req.query else "笔记"
+    query_to_use = req.query if req.query else "notes"
     query_embedding = embedder.encode([query_to_use]).tolist()
 
     limit = 100 if (req.tags or req.links) else req.top_k
@@ -111,8 +111,8 @@ def health():
 if __name__ == "__main__":
     import uvicorn
     print("=" * 60)
-    print(f"🚀 Search API (Chroma) 启动")
-    print(f"   模型: {config.EMBEDDING_MODEL}")
+    print("Search API (Chroma) starting")
+    print(f"   model: {config.EMBEDDING_MODEL}")
     print(f"   API: http://{config.API_HOST}:{config.API_PORT}")
     print("=" * 60)
     uvicorn.run(app, host=config.API_HOST, port=config.API_PORT)

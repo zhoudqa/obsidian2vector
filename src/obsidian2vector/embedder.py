@@ -10,8 +10,9 @@ class Embedder:
     def __init__(self, model_name: str = None):
         self.model_name = model_name or config.EMBEDDING_MODEL
         self.load_mode = config.MODEL_LOAD_MODE
-        print(f"\n📦 加载嵌入模型: {self.model_name}")
-        print(f"   模式: {'离线 (offline)' if self.load_mode == 'offline' else '在线 (online)'}")
+        print(f"\nLoading embedding model: {self.model_name}")
+        mode = "offline" if self.load_mode == "offline" else "online"
+        print(f"   mode: {mode}")
 
         if self.load_mode == "offline":
             self.model = self._load_offline()
@@ -19,34 +20,33 @@ class Embedder:
             self.model = self._load_online()
 
         self.dim = config.EMBEDDING_DIM
-        print(f"   维度: {self.dim}")
+        print(f"   dim: {self.dim}")
 
     def _load_offline(self) -> SentenceTransformer:
         local_path = config.MODEL_LOCAL_PATH
         if local_path:
             model_dir = Path(local_path)
             if model_dir.is_dir():
-                print(f"   本地路径: {model_dir}")
+                print(f"   local path: {model_dir}")
                 return SentenceTransformer(str(model_dir))
             raise FileNotFoundError(
-                f"❌ MODEL_LOCAL_PATH 指定的路径不存在: {local_path}"
+                f"MODEL_LOCAL_PATH not found: {local_path}"
             )
 
         if self._model_in_cache(self.model_name):
-            print("   从 HuggingFace 缓存加载")
+            print("   loading from HuggingFace cache")
             return SentenceTransformer(self.model_name)
 
         raise FileNotFoundError(
-            f"❌ 离线模式下找不到模型 '{self.model_name}'。\n"
-            f"   解决方式:\n"
-            f"   1. 设置 MODEL_LOCAL_PATH 环境变量指向本地模型目录\n"
-            f"   2. 先用在线模式运行一次, 模型会自动缓存到 ~/.cache/huggingface/hub/"
+            f"Model '{self.model_name}' not found in offline mode.\n"
+            f"   1. Set MODEL_LOCAL_PATH to local model directory\n"
+            f"   2. Run online mode first to cache model to ~/.cache/huggingface/hub/"
         )
 
     def _load_online(self) -> SentenceTransformer:
         if config.HF_ENDPOINT:
             os.environ["HF_ENDPOINT"] = config.HF_ENDPOINT
-            print(f"   HF 镜像: {config.HF_ENDPOINT}")
+            print(f"   HF mirror: {config.HF_ENDPOINT}")
         return SentenceTransformer(self.model_name)
 
     @staticmethod

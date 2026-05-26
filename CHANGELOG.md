@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.3] - 2025-05-26
+
+### Fixed
+
+- Remove all non-ASCII characters (Chinese/emoji) from print output to fix Windows GBK encoding crash on MCP server startup
+
 ## [0.0.2] - 2025-05-25
 
 ### Changed

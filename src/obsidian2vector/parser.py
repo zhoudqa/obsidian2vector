@@ -102,6 +102,6 @@ def parse_vault(vault_path: str) -> List[Dict[str, Any]]:
             })
 
         except Exception as e:
-            print(f"   ⚠️ 跳过 {md_file}: {e}")
+            print(f"   [WARN] Skipped {md_file}: {e}")
 
     return notes

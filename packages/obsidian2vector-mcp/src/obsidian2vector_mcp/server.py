@@ -127,7 +127,7 @@ def search_obsidian(query: str = "", top_k: int = 5, tags: str = "", links: str 
     Returns:
         Formatted search results with title, content snippet, tags, links, and score
     """
-    query_to_use = query if query else "笔记"
+    query_to_use = query if query else "notes"
     query_embedding = embedder.encode([query_to_use]).tolist()
 
     limit = 100 if (tags or links) else top_k
@@ -188,7 +188,7 @@ def get_note_by_path(path: str) -> str:
     """Get a specific note by its file path.
 
     Args:
-        path: Relative path to the note file (e.g., 'Persons/Scholars/宋爽.md')
+        path: Relative path to the note file (e.g., 'Persons/Scholars/example.md')
 
     Returns:
         Full note content with metadata

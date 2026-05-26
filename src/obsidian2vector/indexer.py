@@ -9,12 +9,12 @@ from obsidian2vector.embedder import Embedder
 def index_to_milvus(notes, embedder):
     from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
 
-    print(f"\n🗄️ 连接 Milvus ({config.MILVUS_HOST}:{config.MILVUS_PORT})...")
+    print(f"\nConnecting to Milvus ({config.MILVUS_HOST}:{config.MILVUS_PORT})...")
     connections.connect(host=config.MILVUS_HOST, port=config.MILVUS_PORT)
 
     col_name = config.MILVUS_COLLECTION
     if utility.has_collection(col_name):
-        print(f"   删除旧 collection: {col_name}")
+        print(f"   Dropping old collection: {col_name}")
         utility.drop_collection(col_name)
 
     fields = [
@@ -27,17 +27,17 @@ def index_to_milvus(notes, embedder):
         FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=embedder.dim)
     ]
 
-    schema = CollectionSchema(fields=fields, description="Obsidian笔记向量库")
+    schema = CollectionSchema(fields=fields, description="Obsidian notes vector store")
     collection = Collection(name=col_name, schema=schema)
 
     index_params = {"metric_type": "L2", "index_type": "IVF_FLAT", "params": {"nlist": 128}}
     collection.create_index(field_name="vector", index_params=index_params)
 
-    print(f"\n🔢 生成嵌入向量...")
+    print("\nGenerating embeddings...")
     texts = [n['content'] for n in notes]
     embeddings = embedder.encode(texts)
 
-    print(f"\n📥 插入数据到 Milvus...")
+    print("\nInserting data into Milvus...")
     ids = [n['id'] for n in notes]
     titles = [n['title'] for n in notes]
     contents = [n['content'] for n in notes]
@@ -50,30 +50,30 @@ def index_to_milvus(notes, embedder):
     collection.insert(data)
     collection.load()
 
-    print(f"   ✅ 已索引 {len(notes)} 篇笔记到 Milvus")
+    print(f"   Indexed {len(notes)} notes to Milvus")
     return collection
 
 def index_to_chroma(notes, embedder):
-    print(f"\n🗄️ 连接 Chroma: {config.CHROMA_PATH}")
     import chromadb
 
+    print(f"\nConnecting to Chroma: {config.CHROMA_PATH}")
     os.makedirs(config.CHROMA_PATH, exist_ok=True)
     client = chromadb.PersistentClient(path=config.CHROMA_PATH)
 
     col_name = config.CHROMA_COLLECTION
     try:
         client.delete_collection(col_name)
-        print(f"   删除旧 collection: {col_name}")
+        print(f"   Dropping old collection: {col_name}")
     except:
         pass
 
     collection = client.create_collection(name=col_name, metadata={"hnsw:space": "cosine"})
 
-    print(f"\n🔢 生成嵌入向量...")
+    print("\nGenerating embeddings...")
     texts = [n['content'] for n in notes]
     embeddings = embedder.encode(texts)
 
-    print(f"\n📥 插入数据到 Chroma...")
+    print("\nInserting data into Chroma...")
     ids = [n['id'] for n in notes]
     documents = [n['content'] for n in notes]
     metadatas = [
@@ -88,37 +88,37 @@ def index_to_chroma(notes, embedder):
 
     collection.add(ids=ids, embeddings=embeddings.tolist(), documents=documents, metadatas=metadatas)
 
-    print(f"   ✅ 已索引 {len(notes)} 篇笔记到 Chroma")
+    print(f"   Indexed {len(notes)} notes to Chroma")
     return collection
 
 def main():
     print("=" * 60)
-    print("🚀 Obsidian → Vector DB Indexer")
+    print("Obsidian -> Vector DB Indexer")
     print("=" * 60)
-    print(f"\n📋 配置:")
-    print(f"   模型: {config.EMBEDDING_MODEL}")
-    print(f"   向量维度: {config.EMBEDDING_DIM}")
-    print(f"   数据库: {config.DB_TYPE}")
-    print(f"   Vault: {config.VAULT_PATH}")
+    print(f"\nConfig:")
+    print(f"   model: {config.EMBEDDING_MODEL}")
+    print(f"   dim: {config.EMBEDDING_DIM}")
+    print(f"   db: {config.DB_TYPE}")
+    print(f"   vault: {config.VAULT_PATH}")
 
     embedder = Embedder()
 
-    print(f"\n📂 解析 Obsidian Vault: {config.VAULT_PATH}")
+    print(f"\nParsing Obsidian Vault: {config.VAULT_PATH}")
     notes = parse_vault(config.VAULT_PATH)
-    print(f"   ✅ 成功解析 {len(notes)} 篇笔记")
+    print(f"   Parsed {len(notes)} notes")
 
     if config.DB_TYPE == "milvus":
         collection = index_to_milvus(notes, embedder)
     elif config.DB_TYPE == "chroma":
         collection = index_to_chroma(notes, embedder)
     else:
-        print(f"❌ 不支持的数据库类型: {config.DB_TYPE}")
+        print(f"Unsupported db_type: {config.DB_TYPE}")
         sys.exit(1)
 
     print("\n" + "=" * 60)
-    print(f"✅ 索引完成!")
-    print(f"   数据库: {config.DB_TYPE}")
-    print(f"   笔记数: {len(notes)}")
+    print("Indexing complete!")
+    print(f"   db: {config.DB_TYPE}")
+    print(f"   notes: {len(notes)}")
     print("=" * 60)
 
 if __name__ == "__main__":
