@@ -10,12 +10,13 @@ if config.DB_TYPE == "milvus":
     connections.connect(host=config.MILVUS_HOST, port=config.MILVUS_PORT)
     collection = Collection(config.MILVUS_COLLECTION)
     collection.load()
+elif config.DB_TYPE == "chroma":
+    import chromadb
+    print(f"\nConnecting to Chroma: {config.CHROMA_PATH}")
+    client = chromadb.PersistentClient(path=config.CHROMA_PATH)
+    collection = client.get_collection(name=config.CHROMA_COLLECTION)
 else:
-    print("Chroma not yet supported, using Milvus")
-    from pymilvus import connections, Collection
-    connections.connect(host=config.MILVUS_HOST, port=config.MILVUS_PORT)
-    collection = Collection(config.MILVUS_COLLECTION)
-    collection.load()
+    raise ValueError(f"Unsupported db_type: {config.DB_TYPE}")
 
 notes = parse_vault(config.VAULT_PATH)
 
@@ -47,85 +48,87 @@ def search_api(req: SearchRequest):
     limit = 100 if (req.tags or req.links) else req.top_k
 
     if config.DB_TYPE == "milvus":
-        search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
-        results = collection.search(
-            data=query_embedding,
-            anns_field="vector",
-            param=search_params,
-            limit=limit,
-            output_fields=["id", "title", "content", "tags", "links", "path"]
-        )
-
-        filtered = []
-        for r in results[0]:
-            tags = r.entity.get('tags', '') or ''
-            links = r.entity.get('links', '') or ''
-
-            if req.tags and req.tags not in tags:
-                continue
-            if req.links and req.links not in links:
-                continue
-
-            filtered.append((r, tags, links))
-            if len(filtered) >= req.top_k:
-                break
-
-        return [
-            SearchResult(
-                id=r.entity.get('id', ''),
-                title=r.entity.get('title', ''),
-                content=r.entity.get('content', '')[:200] + '...',
-                tags=tags,
-                links=links,
-                path=r.entity.get('path', ''),
-                score=r.distance
-            )
-            for r, tags, links in filtered
-        ]
+        return _search_milvus(query_embedding, limit, req)
     else:
-        results = collection.query(
-            query_embeddings=query_embedding,
-            n_results=limit,
-            include=["metadatas", "documents", "distances"]
+        return _search_chroma(query_embedding, limit, req)
+
+def _search_milvus(query_embedding, limit, req):
+    search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
+    results = collection.search(
+        data=query_embedding,
+        anns_field="vector",
+        param=search_params,
+        limit=limit,
+        output_fields=["id", "title", "content", "tags", "links", "path"]
+    )
+
+    filtered = []
+    for r in results[0]:
+        tags = r.entity.get('tags', '') or ''
+        links = r.entity.get('links', '') or ''
+
+        if req.tags and req.tags not in tags:
+            continue
+        if req.links and req.links not in links:
+            continue
+
+        filtered.append((r, tags, links))
+        if len(filtered) >= req.top_k:
+            break
+
+    return [
+        SearchResult(
+            id=r.entity.get('id', ''),
+            title=r.entity.get('title', ''),
+            content=r.entity.get('content', '')[:200] + '...',
+            tags=tags,
+            links=links,
+            path=r.entity.get('path', ''),
+            score=r.distance
         )
+        for r, tags, links in filtered
+    ]
 
-        filtered = []
-        if not results:
-            return []
+def _search_chroma(query_embedding, limit, req):
+    results = collection.query(
+        query_embeddings=query_embedding,
+        n_results=limit,
+        include=["metadatas", "documents", "distances"]
+    )
 
-        r = results[0]
-        metadatas = r.get('metadatas', [])
-        documents = r.get('documents', [])
-        distances = r.get('distances', [])
+    if not results or 'metadatas' not in results or not results['metadatas']:
+        return []
 
-        if not metadatas:
-            return []
+    metadatas = results.get('metadatas', [[]])[0]
+    documents = results.get('documents', [[]])[0]
+    distances = results.get('distances', [[]])[0]
 
-        for i, meta in enumerate(metadatas):
-            tags = meta.get('tags', '') or ''
-            links = meta.get('links', '') or ''
+    filtered = []
+    for i, meta in enumerate(metadatas):
+        tags = meta.get('tags', '') or ''
+        links = meta.get('links', '') or ''
 
-            if req.tags and req.tags not in tags:
-                continue
-            if req.links and req.links not in links:
-                continue
+        if req.tags and req.tags not in tags:
+            continue
+        if req.links and req.links not in links:
+            continue
 
-            filtered.append((meta, documents[i] if i < len(documents) else "", distances[i] if i < len(distances) else 0))
-            if len(filtered) >= req.top_k:
-                break
+        filtered.append((meta, documents[i] if i < len(documents) else "", distances[i] if i < len(distances) else 0))
+        if len(filtered) >= req.top_k:
+            break
 
-        return [
-            SearchResult(
-                id=meta.get('path', ''),
-                title=meta.get('title', ''),
-                content=doc[:200] + '...',
-                tags=meta.get('tags', ''),
-                links=meta.get('links', ''),
-                path=meta.get('path', ''),
-                score=dist
-            )
-            for meta, doc, dist in filtered
-        ]
+    return [
+        SearchResult(
+            id=meta.get('path', ''),
+            title=meta.get('title', ''),
+            content=doc[:200] + '...',
+            tags=meta.get('tags', ''),
+            links=meta.get('links', ''),
+            path=meta.get('path', ''),
+            score=dist
+        )
+        for meta, doc, dist in filtered
+    ]
 
 @app.get("/tags")
 def list_tags():
@@ -156,7 +159,7 @@ def root():
 def health():
     return {"status": "healthy", "db": config.DB_TYPE}
 
-if __name__ == "__main__":
+def main():
     import uvicorn
     print("=" * 60)
     print("Search API starting")
@@ -165,3 +168,6 @@ if __name__ == "__main__":
     print(f"   API: http://{config.API_HOST}:{config.API_PORT}")
     print("=" * 60)
     uvicorn.run(app, host=config.API_HOST, port=config.API_PORT)
+
+if __name__ == "__main__":
+    main()

@@ -92,12 +92,10 @@ obsidian2vector-index
 **REST API：**
 
 ```bash
-# Milvus
 obsidian2vector-search
-
-# Chroma
-obsidian2vector-search-chroma
 ```
+
+根据 `db_type` 配置自动选择 Milvus 或 Chroma。
 
 API 地址: http://localhost:8000
 

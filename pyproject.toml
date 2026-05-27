@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "obsidian2vector"
-version = "0.0.3"
+version = "0.0.4"
 description = "Convert Obsidian vault to vector database (Milvus/Chroma)"
 readme = "README.md"
 license = "MIT"
@@ -41,7 +41,6 @@ Repository = "https://github.com/zhoudqa/obsidian2vector"
 [project.scripts]
 obsidian2vector-index = "obsidian2vector.indexer:main"
 obsidian2vector-search = "obsidian2vector.search:main"
-obsidian2vector-search-chroma = "obsidian2vector.search_chroma:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

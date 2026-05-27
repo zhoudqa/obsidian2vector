@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.4] - 2025-05-27
+
+### Changed
+
+- **合并搜索入口**: `search.py` 和 `search_chroma.py` 合并为统一的 `obsidian2vector-search` 命令，根据 `db_type` 配置自动选择 Milvus 或 Chroma 后端
+- 添加 `main()` 函数以支持 `pyproject.toml` 入口点调用
+
+### Removed
+
+- 移除 `search_chroma.py`（合并入 `search.py`）
+- 移除 `obsidian2vector-search-chroma` 入口点
+
 ## [0.0.3] - 2025-05-26
 
 ### Fixed
