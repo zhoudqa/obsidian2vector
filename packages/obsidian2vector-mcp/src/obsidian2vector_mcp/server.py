@@ -1,29 +1,59 @@
 #!/usr/bin/env python3
+import threading
+
 from mcp.server.fastmcp import FastMCP
 from obsidian2vector import config
-from obsidian2vector.embedder import Embedder
-from obsidian2vector.parser import parse_vault
 
 mcp = FastMCP("Obsidian Search")
 
-embedder = Embedder()
+_state = {
+    "embedder": None,
+    "collection": None,
+    "notes": None,
+    "ready": False,
+    "error": None,
+}
+_ready_event = threading.Event()
 
-if config.DB_TYPE == "milvus":
-    from pymilvus import connections, Collection
-    connections.connect(host=config.MILVUS_HOST, port=config.MILVUS_PORT)
-    collection = Collection(config.MILVUS_COLLECTION)
-    collection.load()
-else:
-    import chromadb
-    client = chromadb.PersistentClient(path=config.CHROMA_PATH)
-    collection = client.get_collection(name=config.CHROMA_COLLECTION)
 
-notes = parse_vault(config.VAULT_PATH)
+def _load_resources():
+    try:
+        from obsidian2vector.embedder import Embedder
+        from obsidian2vector.parser import parse_vault
+
+        _state["embedder"] = Embedder()
+
+        if config.DB_TYPE == "milvus":
+            from pymilvus import connections, Collection
+            connections.connect(host=config.MILVUS_HOST, port=config.MILVUS_PORT)
+            _state["collection"] = Collection(config.MILVUS_COLLECTION)
+            _state["collection"].load()
+        elif config.DB_TYPE == "chroma":
+            import chromadb
+            client = chromadb.PersistentClient(path=config.CHROMA_PATH)
+            _state["collection"] = client.get_collection(name=config.CHROMA_COLLECTION)
+        else:
+            raise ValueError(f"Unsupported db_type: {config.DB_TYPE}")
+
+        _state["notes"] = parse_vault(config.VAULT_PATH)
+        _state["ready"] = True
+    except Exception as e:
+        _state["error"] = e
+    finally:
+        _ready_event.set()
+
+
+def _ensure_ready():
+    if _state["ready"]:
+        return
+    _ready_event.wait()
+    if _state["error"]:
+        raise _state["error"]
 
 
 def _search_milvus(query_embedding, limit, tags, links, top_k):
     search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
-    results = collection.search(
+    results = _state["collection"].search(
         data=query_embedding,
         anns_field="vector",
         param=search_params,
@@ -55,7 +85,7 @@ def _search_milvus(query_embedding, limit, tags, links, top_k):
 
 
 def _search_chroma(query_embedding, limit, tags, links, top_k):
-    results = collection.query(
+    results = _state["collection"].query(
         query_embeddings=query_embedding,
         n_results=limit,
         include=["metadatas", "documents", "distances"],
@@ -127,8 +157,9 @@ def search_obsidian(query: str = "", top_k: int = 5, tags: str = "", links: str 
     Returns:
         Formatted search results with title, content snippet, tags, links, and score
     """
+    _ensure_ready()
     query_to_use = query if query else "notes"
-    query_embedding = embedder.encode([query_to_use]).tolist()
+    query_embedding = _state["embedder"].encode([query_to_use]).tolist()
 
     limit = 100 if (tags or links) else top_k
 
@@ -152,8 +183,9 @@ def list_all_tags() -> str:
     Returns:
         Formatted list of all tags found in notes
     """
+    _ensure_ready()
     all_tags = set()
-    for n in notes:
+    for n in _state["notes"]:
         for t in n["tags"]:
             if t:
                 all_tags.add(t)
@@ -171,8 +203,9 @@ def list_all_links() -> str:
     Returns:
         Formatted list of all wiki links found in notes
     """
+    _ensure_ready()
     all_links = set()
-    for n in notes:
+    for n in _state["notes"]:
         for link in n["links"]:
             if link:
                 all_links.add(link)
@@ -193,7 +226,8 @@ def get_note_by_path(path: str) -> str:
     Returns:
         Full note content with metadata
     """
-    for n in notes:
+    _ensure_ready()
+    for n in _state["notes"]:
         if n["path"] == path:
             lines = [f"# {n['title']}", ""]
             lines.append(f"**Path**: {n['path']}")
@@ -212,10 +246,11 @@ def get_note_by_path(path: str) -> str:
 @mcp.resource("obsidian://stats")
 def get_stats() -> str:
     """Get statistics about the indexed Obsidian vault."""
+    _ensure_ready()
     db_name = "Milvus (L2)" if config.DB_TYPE == "milvus" else "Chroma (cosine similarity)"
     return f"""# Obsidian Vault Stats
 
-- **Total Notes**: {len(notes)}
+- **Total Notes**: {len(_state['notes'])}
 - **Model**: {config.EMBEDDING_MODEL}
 - **Vector Dimension**: {config.EMBEDDING_DIM}
 - **Database**: {db_name}
@@ -223,6 +258,8 @@ def get_stats() -> str:
 
 
 def main():
+    t = threading.Thread(target=_load_resources, daemon=True)
+    t.start()
     mcp.run()
 
 
