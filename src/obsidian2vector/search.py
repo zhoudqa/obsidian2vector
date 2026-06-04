@@ -1,3 +1,4 @@
+import os
 from typing import List
 from obsidian2vector import config
 from obsidian2vector.embedder import Embedder
@@ -20,7 +21,7 @@ else:
 
 notes = parse_vault(config.VAULT_PATH)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 app = FastAPI(title="Obsidian Vector Search API")
@@ -34,7 +35,6 @@ class SearchRequest(BaseModel):
 class SearchResult(BaseModel):
     id: str
     title: str
-    content: str
     tags: str
     links: str
     path: str
@@ -59,7 +59,7 @@ def _search_milvus(query_embedding, limit, req):
         anns_field="vector",
         param=search_params,
         limit=limit,
-        output_fields=["id", "title", "content", "tags", "links", "path"]
+        output_fields=["id", "title", "tags", "links", "path"]
     )
 
     filtered = []
@@ -80,7 +80,6 @@ def _search_milvus(query_embedding, limit, req):
         SearchResult(
             id=r.entity.get('id', ''),
             title=r.entity.get('title', ''),
-            content=r.entity.get('content', '')[:200] + '...',
             tags=tags,
             links=links,
             path=r.entity.get('path', ''),
@@ -93,14 +92,13 @@ def _search_chroma(query_embedding, limit, req):
     results = collection.query(
         query_embeddings=query_embedding,
         n_results=limit,
-        include=["metadatas", "documents", "distances"]
+        include=["metadatas", "distances"]
     )
 
     if not results or 'metadatas' not in results or not results['metadatas']:
         return []
 
     metadatas = results.get('metadatas', [[]])[0]
-    documents = results.get('documents', [[]])[0]
     distances = results.get('distances', [[]])[0]
 
     filtered = []
@@ -113,7 +111,7 @@ def _search_chroma(query_embedding, limit, req):
         if req.links and req.links not in links:
             continue
 
-        filtered.append((meta, documents[i] if i < len(documents) else "", distances[i] if i < len(distances) else 0))
+        filtered.append((meta, distances[i] if i < len(distances) else 0))
         if len(filtered) >= req.top_k:
             break
 
@@ -121,13 +119,12 @@ def _search_chroma(query_embedding, limit, req):
         SearchResult(
             id=meta.get('path', ''),
             title=meta.get('title', ''),
-            content=doc[:200] + '...',
             tags=meta.get('tags', ''),
             links=meta.get('links', ''),
             path=meta.get('path', ''),
             score=dist
         )
-        for meta, doc, dist in filtered
+        for meta, dist in filtered
     ]
 
 @app.get("/tags")
@@ -158,6 +155,36 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy", "db": config.DB_TYPE}
+
+@app.get("/note/{path:path}")
+def get_note(path: str):
+    """Get a specific note by its file path.
+
+    Args:
+        path: Relative path to the note file (e.g., 'Persons/Scholars/example.md')
+
+    Returns:
+        Raw file content as text/plain
+    """
+    # Security: prevent path traversal
+    vault_path = os.path.normpath(config.VAULT_PATH)
+    requested_path = os.path.normpath(os.path.join(vault_path, path))
+    requested_path = os.path.realpath(requested_path)
+
+    if not requested_path.startswith(vault_path):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not os.path.isfile(requested_path):
+        raise HTTPException(status_code=404, detail=f"Note not found: {path}")
+
+    try:
+        with open(requested_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read note: {e}")
+
+    return content
+
 
 def main():
     import uvicorn

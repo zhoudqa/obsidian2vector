@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.5] - 2026-06-04
+
+### Changed
+
+- **REST API `/search` 对齐 MCP**: 移除返回的 `content` 字段，与 MCP `search_obsidian` 返回字段保持一致（仅 title, path, tags, links, score）
+- **MCP `search_obsidian` 对齐 REST**: 移除返回的 `content` 字段，改为通过 `get_note_by_path` 读取全文
+- **MCP `list_all_tags` / `list_all_links`**: 从扫描 Vault 改为查询数据库，启动更快，不再依赖 Vault 解析
+- **MCP `get_note_by_path`**: 从内存笔记列表改为直接读文件系统，支持任意笔记路径
+- **MCP 统计功能**: 从 `len(notes)` 改为从数据库获取实际条目数
+
+### Added
+
+- **REST API `GET /note/{path:path}`**: 新增端点对标 MCP `get_note_by_path`，支持按路径读取笔记全文，含路径遍历防护
+
 ## [0.0.4] - 2025-05-27
 
 ### Changed

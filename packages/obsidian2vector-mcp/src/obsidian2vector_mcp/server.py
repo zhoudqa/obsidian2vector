@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import threading
 
 from mcp.server.fastmcp import FastMCP
@@ -9,7 +10,6 @@ mcp = FastMCP("Obsidian Search")
 _state = {
     "embedder": None,
     "collection": None,
-    "notes": None,
     "ready": False,
     "error": None,
 }
@@ -19,7 +19,6 @@ _ready_event = threading.Event()
 def _load_resources():
     try:
         from obsidian2vector.embedder import Embedder
-        from obsidian2vector.parser import parse_vault
 
         _state["embedder"] = Embedder()
 
@@ -35,7 +34,6 @@ def _load_resources():
         else:
             raise ValueError(f"Unsupported db_type: {config.DB_TYPE}")
 
-        _state["notes"] = parse_vault(config.VAULT_PATH)
         _state["ready"] = True
     except Exception as e:
         _state["error"] = e
@@ -51,6 +49,64 @@ def _ensure_ready():
         raise _state["error"]
 
 
+def _fetch_tags_from_milvus() -> set[str]:
+    collection = _state["collection"]
+    results = collection.query(
+        expr="",
+        output_fields=["tags"],
+        limit=16384,
+    )
+    all_tags: set[str] = set()
+    for row in results:
+        raw = row.get("tags", "") or ""
+        for t in raw.split(","):
+            t = t.strip()
+            if t:
+                all_tags.add(t)
+    return all_tags
+
+
+def _fetch_links_from_milvus() -> set[str]:
+    collection = _state["collection"]
+    results = collection.query(
+        expr="",
+        output_fields=["links"],
+        limit=16384,
+    )
+    all_links: set[str] = set()
+    for row in results:
+        raw = row.get("links", "") or ""
+        for l in raw.split(","):
+            l = l.strip()
+            if l:
+                all_links.add(l)
+    return all_links
+
+
+def _fetch_tags_from_chroma() -> set[str]:
+    results = _state["collection"].get(include=["metadatas"])
+    all_tags: set[str] = set()
+    for meta in results.get("metadatas", []):
+        raw = meta.get("tags", "") or ""
+        for t in raw.split(","):
+            t = t.strip()
+            if t:
+                all_tags.add(t)
+    return all_tags
+
+
+def _fetch_links_from_chroma() -> set[str]:
+    results = _state["collection"].get(include=["metadatas"])
+    all_links: set[str] = set()
+    for meta in results.get("metadatas", []):
+        raw = meta.get("links", "") or ""
+        for l in raw.split(","):
+            l = l.strip()
+            if l:
+                all_links.add(l)
+    return all_links
+
+
 def _search_milvus(query_embedding, limit, tags, links, top_k):
     search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
     results = _state["collection"].search(
@@ -58,7 +114,7 @@ def _search_milvus(query_embedding, limit, tags, links, top_k):
         anns_field="vector",
         param=search_params,
         limit=limit,
-        output_fields=["id", "title", "content", "tags", "links", "path"],
+        output_fields=["id", "title", "tags", "links", "path"],
     )
 
     filtered = []
@@ -75,7 +131,6 @@ def _search_milvus(query_embedding, limit, tags, links, top_k):
                 "path": r.entity.get("path", ""),
                 "tags": r_tags,
                 "links": r_links,
-                "content": r.entity.get("content", ""),
                 "score": r.distance,
             }
         )
@@ -88,14 +143,13 @@ def _search_chroma(query_embedding, limit, tags, links, top_k):
     results = _state["collection"].query(
         query_embeddings=query_embedding,
         n_results=limit,
-        include=["metadatas", "documents", "distances"],
+        include=["metadatas", "distances"],
     )
 
     if not results or "metadatas" not in results or not results["metadatas"]:
         return []
 
     metadatas = results.get("metadatas", [[]])[0]
-    documents = results.get("documents", [[]])[0]
     distances = results.get("distances", [[]])[0]
 
     filtered = []
@@ -112,7 +166,6 @@ def _search_chroma(query_embedding, limit, tags, links, top_k):
                 "path": meta.get("path", ""),
                 "tags": r_tags,
                 "links": r_links,
-                "content": documents[i] if i < len(documents) else "",
                 "score": distances[i] if i < len(distances) else 0,
             }
         )
@@ -136,10 +189,6 @@ def _format_results(results, query, has_filters):
             lines.append(f"- **Tags**: {r['tags']}")
         if r["links"]:
             lines.append(f"- **Links**: {r['links']}")
-        doc = r["content"]
-        lines.append(
-            f"- **Content**: {doc[:200]}..." if len(doc) > 200 else f"- **Content**: {doc}"
-        )
         lines.append("")
     return "\n".join(lines)
 
@@ -155,7 +204,8 @@ def search_obsidian(query: str = "", top_k: int = 5, tags: str = "", links: str 
         links: Filter by wiki link (substring match)
 
     Returns:
-        Formatted search results with title, content snippet, tags, links, and score
+        Formatted search results with title, path, tags, links, and score.
+        Use get_note_by_path to read the full content of any result.
     """
     _ensure_ready()
     query_to_use = query if query else "notes"
@@ -184,11 +234,10 @@ def list_all_tags() -> str:
         Formatted list of all tags found in notes
     """
     _ensure_ready()
-    all_tags = set()
-    for n in _state["notes"]:
-        for t in n["tags"]:
-            if t:
-                all_tags.add(t)
+    if config.DB_TYPE == "milvus":
+        all_tags = _fetch_tags_from_milvus()
+    else:
+        all_tags = _fetch_tags_from_chroma()
 
     if not all_tags:
         return "No tags found."
@@ -204,11 +253,10 @@ def list_all_links() -> str:
         Formatted list of all wiki links found in notes
     """
     _ensure_ready()
-    all_links = set()
-    for n in _state["notes"]:
-        for link in n["links"]:
-            if link:
-                all_links.add(link)
+    if config.DB_TYPE == "milvus":
+        all_links = _fetch_links_from_milvus()
+    else:
+        all_links = _fetch_links_from_chroma()
 
     if not all_links:
         return "No links found."
@@ -227,20 +275,18 @@ def get_note_by_path(path: str) -> str:
         Full note content with metadata
     """
     _ensure_ready()
-    for n in _state["notes"]:
-        if n["path"] == path:
-            lines = [f"# {n['title']}", ""]
-            lines.append(f"**Path**: {n['path']}")
-            if n["tags"]:
-                lines.append(f"**Tags**: {', '.join(n['tags'])}")
-            if n["links"]:
-                lines.append(f"**Links**: {', '.join(n['links'])}")
-            lines.append("")
-            lines.append("## Content")
-            lines.append(n["content"])
-            return "\n".join(lines)
+    full_path = os.path.join(config.VAULT_PATH, path)
 
-    return f"Note not found: {path}"
+    if not os.path.isfile(full_path):
+        return f"Note not found: {path}"
+
+    try:
+        with open(full_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        return f"Failed to read note: {e}"
+
+    return content
 
 
 @mcp.resource("obsidian://stats")
@@ -248,9 +294,16 @@ def get_stats() -> str:
     """Get statistics about the indexed Obsidian vault."""
     _ensure_ready()
     db_name = "Milvus (L2)" if config.DB_TYPE == "milvus" else "Chroma (cosine similarity)"
+
+    if config.DB_TYPE == "milvus":
+        collection = _state["collection"]
+        count = collection.num_entities
+    else:
+        count = _state["collection"].count()
+
     return f"""# Obsidian Vault Stats
 
-- **Total Notes**: {len(_state['notes'])}
+- **Total Notes**: {count}
 - **Model**: {config.EMBEDDING_MODEL}
 - **Vector Dimension**: {config.EMBEDDING_DIM}
 - **Database**: {db_name}
