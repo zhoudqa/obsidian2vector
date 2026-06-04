@@ -40,19 +40,29 @@ class SearchResult(BaseModel):
     path: str
     score: float
 
-@app.post("/search", response_model=List[SearchResult])
-def search_api(req: SearchRequest):
-    query_to_use = req.query if req.query else "notes"
+def _search(query: str, top_k: int, tags: str, links: str) -> list:
+    """Core search logic shared by GET and POST."""
+    query_to_use = query if query else "notes"
     query_embedding = embedder.encode([query_to_use]).tolist()
 
-    limit = 100 if (req.tags or req.links) else req.top_k
+    limit = 100 if (tags or links) else top_k
 
     if config.DB_TYPE == "milvus":
-        return _search_milvus(query_embedding, limit, req)
+        return _search_milvus(query_embedding, limit, tags, links, top_k)
     else:
-        return _search_chroma(query_embedding, limit, req)
+        return _search_chroma(query_embedding, limit, tags, links, top_k)
 
-def _search_milvus(query_embedding, limit, req):
+
+@app.get("/search", response_model=List[SearchResult])
+def search_api_get(query: str = "", top_k: int = 5, tags: str = "", links: str = ""):
+    return _search(query, top_k, tags, links)
+
+
+@app.post("/search", response_model=List[SearchResult])
+def search_api_post(req: SearchRequest):
+    return _search(req.query, req.top_k, req.tags, req.links)
+
+def _search_milvus(query_embedding, limit, tags_filter, links_filter, top_k):
     search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
     results = collection.search(
         data=query_embedding,
@@ -67,13 +77,13 @@ def _search_milvus(query_embedding, limit, req):
         tags = r.entity.get('tags', '') or ''
         links = r.entity.get('links', '') or ''
 
-        if req.tags and req.tags not in tags:
+        if tags_filter and tags_filter not in tags:
             continue
-        if req.links and req.links not in links:
+        if links_filter and links_filter not in links:
             continue
 
         filtered.append((r, tags, links))
-        if len(filtered) >= req.top_k:
+        if len(filtered) >= top_k:
             break
 
     return [
@@ -88,7 +98,7 @@ def _search_milvus(query_embedding, limit, req):
         for r, tags, links in filtered
     ]
 
-def _search_chroma(query_embedding, limit, req):
+def _search_chroma(query_embedding, limit, tags_filter, links_filter, top_k):
     results = collection.query(
         query_embeddings=query_embedding,
         n_results=limit,
@@ -106,13 +116,13 @@ def _search_chroma(query_embedding, limit, req):
         tags = meta.get('tags', '') or ''
         links = meta.get('links', '') or ''
 
-        if req.tags and req.tags not in tags:
+        if tags_filter and tags_filter not in tags:
             continue
-        if req.links and req.links not in links:
+        if links_filter and links_filter not in links:
             continue
 
         filtered.append((meta, distances[i] if i < len(distances) else 0))
-        if len(filtered) >= req.top_k:
+        if len(filtered) >= top_k:
             break
 
     return [

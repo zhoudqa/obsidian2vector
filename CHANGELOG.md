@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.6] - 2026-06-04
+
+### Added
+
+- **REST API `GET /search`**: 新增 GET 端点，支持 URL query string 方式搜索（`/search?query=xxx&top_k=3&tags=yyy`），解决 Windows Git Bash 下 curl JSON body 解析问题。`POST /search` 完全向下兼容。
+
 ## [0.0.5] - 2026-06-04
 
 ### Changed
